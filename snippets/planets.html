@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<head>
+    <title>Planets</title>
+</head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"
+    integrity="sha512-zhHQR0/H5SEBL3Wn6yYSaTTZej12z0hVZKOv3TwCUXT1z5qeqGcXJLLrbERYRScEDDpYIJhPC1fk31gqR783iQ=="
+    crossorigin="anonymous" defer></script>
+
+</html>
+
+<body>
+    <!--- Set mass of created planets via slider --->
+    <input style="float: left" type="range" min="1" max="120" value="1" class="slider" id="massSlider">
+    <p>Mass: <span id="massValue">10</span></p>
+    <p>Control: Left click / touch and drag to create planets, right click / double
+        touch to move camera, scroll to zoom.</p>
+    <canvas id="myCanvas" style="border:2px solid"></canvas>
+</body>
+<script type="module">
+
+    // Math helpers
+
+    function Vector2d(x, y) {
+        return { x: x, y: y };
+    }
+
+    const Vector2dZero = Vector2d(0.0, 0.0);
+
+    function Vector2dAdd(a, b) {
+        return Vector2d(a.x + b.x, a.y + b.y);
+    }
+
+    function Vector2dSub(a, b) {
+        return Vector2d(a.x - b.x, a.y - b.y);
+    }
+
+    function Vector2dMul(a, scalar) {
+        return Vector2d(a.x * scalar, a.y * scalar);
+    }
+
+    function Vector2dDot(a, b) {
+        return a.x * b.x + a.y * b.y;
+    }
+
+    function Vector2dSelfDot(a) {
+        return a.x * a.x + a.y * a.y;
+    }
+
+    function Vector2dLength(a) {
+        return Math.sqrt(a.x * a.x + a.y * a.y);
+    }
+
+    function Vector2dNormalize(a) {
+        let length = Vector2dLength(a);
+        return Vector2d(a.x / length, a.y / length);
+    }
+
+    function Vector3d(x, y, z) {
+        return { x: x, y: y, z: z };
+    }
+
+    const Vector3dZero = Vector3d(0.0, 0.0, 0.0);
+
+    function Vector3dAdd(a, b) {
+        return Vector3d(a.x + b.x, a.y + b.y, a.z + b.z);
+    }
+
+    function Vector3dSub(a, b) {
+        return Vector3d(a.x - b.x, a.y - b.y, a.z - b.z);
+    }
+
+    function Vector3dMul(a, scalar) {
+        return Vector3d(a.x * scalar, a.y * scalar, a.z * scalar);
+    }
+
+    function Vector3dDot(a, b) {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    function Vector3dSelfDot(a) {
+        return a.x * a.x + a.y * a.y + a.z * a.z;
+    }
+
+    function Vector3dLength(a) {
+        return Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    }
+
+    function Vector3dNormalize(a) {
+        let length = Vector3dLength(a);
+        return Vector3d(a.x / length, a.y / length, a.z / length);
+    }
+
+    function Vector3dCross(a, b) {
+        return Vector3d(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+    }
+
+    // Icosphere class
+    class Icosphere {
+        constructor(subdivisions) {
+            this.vertices = [];
+            this.attributes = [];
+            this.subdivisions = subdivisions;
+            this.setupVertices();
+            this.setupAttributes();
+        }
+
+        setupVertices() {
+            // top
+            let vertices = [];
+
+            let polarToCartesian = (theta, phi) => {
+                let x = Math.sin(theta) * Math.cos(phi);
+                let y = Math.cos(theta) * Math.cos(phi);
+                let z = Math.sin(phi);
+                return [x, y, z];
+            }
+
+            const top = polarToCartesian(0, Math.PI / 2);
+            const bottom = polarToCartesian(0, -Math.PI / 2);
+            const points = 5;
+            const step = 2 * Math.PI / points;
+            const offset = step / 2;
+            const latitudes = [Math.atan(1 / 2), -Math.atan(1 / 2)];
+            for (let k = 0; k < points; k++) {
+                let k0 = k;
+                let k1 = (k0 + 1) % points;
+                let uv0 = polarToCartesian(k0 * step, latitudes[0]);
+                let uv1 = polarToCartesian(k1 * step, latitudes[0]);
+                let lv0 = polarToCartesian(offset + k0 * step, latitudes[1]);
+                let lv1 = polarToCartesian(offset + k1 * step, latitudes[1]);
+                this.vertices.push(top, uv0, uv1);
+                this.vertices.push(uv0, lv0, uv1);
+                this.vertices.push(uv1, lv0, lv1);
+                this.vertices.push(lv0, bottom, lv1);
+            }
+
+            for (let i = 0; i < this.subdivisions; i++) {
+                this.subdivide(vertices);
+            }
+
+            // normalize the vertices
+
+            let normalizeVertex = (v) => {
+                let vec = Vector3d(v[0], v[1], v[2]);
+                let n = Vector3dNormalize(vec);
+                return [n.x, n.y, n.z];
+            }
+
+            for (let i = 0; i < this.vertices.length; i++) {
+                let v = this.vertices[i];
+                let n = normalizeVertex(v);
+                this.vertices[i] = n;
+            }
+        }
+
+        subdivide() {
+            let newVertices = [];
+            for (let i = 0; i < this.vertices.length; i += 3) {
+
+                // get the indices of the triangle
+                let v0 = this.vertices[i + 0];
+                let v1 = this.vertices[i + 1];
+                let v2 = this.vertices[i + 2];
+
+                let v01 = [0, 0, 0];
+                let v12 = [0, 0, 0];
+                let v20 = [0, 0, 0];
+
+                for (let j = 0; j < 3; j++) {
+                    v01[j] = (v0[j] + v1[j]) / 2;
+                    v12[j] = (v1[j] + v2[j]) / 2;
+                    v20[j] = (v2[j] + v0[j]) / 2;
+                }
+
+                //adapt original triangle
+                this.vertices[i + 0] = v0;
+                this.vertices[i + 1] = v01;
+                this.vertices[i + 2] = v20;
+
+                //new triangles
+                newVertices.push(v01, v1, v12);
+                newVertices.push(v20, v12, v2);
+                newVertices.push(v01, v12, v20);
+            }
+            this.vertices = this.vertices.concat(newVertices);
+        }
+
+        setupAttributes() {
+            // create attributes from vertices and normals
+            for (let i = 0; i < this.vertices.length; i += 3) {
+                let v0 = this.vertices[i + 0];
+                let v1 = this.vertices[i + 1];
+                let v2 = this.vertices[i + 2];
+                this.attributes.push(v0[0], v0[1], v0[2], 1.0, 0.0, 0.0);
+                this.attributes.push(v1[0], v1[1], v1[2], 0.0, 1.0, 0.0);
+                this.attributes.push(v2[0], v2[1], v2[2], 0.0, 0.0, 1.0);
+            }
+        }
+    }
+
+    // Renderer Logic
+
+    // Shader programs
+
+    // Vertex shader program
+    const vsPlanetSource = `
+    attribute vec4 aVertexPosition;
+    attribute vec4 aVertexColor;
+
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+
+    varying highp vec3 vNormal;
+    varying highp vec4 vFragPos;
+    varying highp vec4 vColor;
+
+    void main() {
+        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+        vFragPos = uModelViewMatrix * aVertexPosition;
+        vNormal = mat3(uModelViewMatrix) * aVertexPosition.xyz;
+        vColor = aVertexColor;
+    }
+  `;
+
+    // Fragment shader program
+    const fsPlanetSource = `
+    #define MAX_LIGHTS 4
+    uniform highp mat4 uLights;
+    uniform int uNumLights;
+    uniform highp vec4 uColor;
+
+    varying highp vec4 vFragPos;
+    varying highp vec3 vNormal;
+
+    void main() {
+        highp vec3 normal = normalize(vNormal);
+        highp vec3 color = uColor.rgb;
+        for (int i = 0; i < MAX_LIGHTS; i++) {
+            if (i >= uNumLights) break;
+            highp vec3 lightDir = normalize(uLights[i].xyz - vFragPos.xyz);
+            highp float diff = max(dot(normal, lightDir), 0.0);
+            color += diff * uLights[i].w * uColor.rgb;
+        }
+        gl_FragColor = vec4(color, 1.0);
+    }
+  `;
+
+    // Star Vertex shader program
+    const vsStarSource = `
+    attribute vec4 aVertexPosition;
+    attribute vec4 aVertexColor;
+
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    uniform highp float uTime;
+
+    varying highp vec4 vPos;
+    varying highp vec4 vFragPos;
+    varying highp float vTime;
+    varying highp float vNoise;
+
+    highp float random (highp vec4 fragPos) {
+        highp float x = dot(fragPos, vec4(12.9898, 78.233, 151.7182, 12.9898));
+        return fract(sin(x) * 43758.5453);
+    }
+
+    void main() {
+        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+        vFragPos = uModelViewMatrix * aVertexPosition;
+        vPos = aVertexColor;
+        vTime = uTime;
+        vNoise = random(aVertexPosition);
+    }
+  `;
+
+    // Star fragment shader program
+    const fsStarSource = `
+    varying highp vec4 vPos;
+    varying highp float vTime;
+    varying highp float vNoise;
+
+    void main() {
+        const highp vec3 center = vec3(1.0/3.0, 1.0/3.0, 1.0/3.0);
+        highp float dist = distance(vPos.xyz, center);
+        highp float green = 0.3 + 0.5 * sin(1.5*abs(sin(5.0 * vNoise + vTime/400.0)) * dist);
+        gl_FragColor = vec4(0.8, green, 0.2, 0.85);
+    }
+    `;
+
+    // Shader helper functions
+
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(
+                `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`,
+            );
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert(
+                `Unable to initialize the shader program: ${gl.getProgramInfoLog(
+                    shaderProgram,
+                )}`,
+            );
+            return null;
+        }
+        return shaderProgram;
+    }
+
+    // Cmaera class
+
+    class Camera {
+        constructor(ctx) {
+            this.projectionMatrix = mat4.create();
+            this.viewMatrix = mat4.create();
+            this.ctx = ctx;
+            mat4.perspective(this.projectionMatrix, 45 * Math.PI / 180, this.ctx.canvas.clientWidth / this.ctx.canvas.clientHeight, 0.1, 10000.0);
+            mat4.translate(this.viewMatrix, this.viewMatrix, [-400, -300, -200]);
+        }
+
+        // Convert canvas coordinates to world coordinates at z = 0
+        canvasToWorldPoint(x, y) {
+            // canvas to clip space
+            let clipX = 2 * x / this.ctx.canvas.clientWidth - 1;
+            let clipY = 1 - 2 * y / this.ctx.canvas.clientHeight;
+
+            // clip space to view space
+            let invViewProjection = mat4.create();
+            mat4.invert(invViewProjection, this.projectionMatrix);
+            let world = vec4.fromValues(clipX, clipY, 0, 1);
+            vec4.transformMat4(world, world, invViewProjection);
+            let direction = vec3.fromValues(world[0] / world[3], world[1] / world[3], world[2] / world[3]);
+            let r = this.viewMatrix[14] / direction[2];
+            let intersection = vec3.create();
+            vec3.scaleAndAdd(intersection, vec3.fromValues(0, 0, 0), direction, r);
+            return [intersection[0] - this.viewMatrix[12], intersection[1] - this.viewMatrix[13]];
+        }
+
+        translate(x, y, z) {
+            mat4.translate(this.viewMatrix, this.viewMatrix, [x, y, z]);
+        }
+
+        get projectionViewMatrix() {
+            let pv = mat4.create();
+            mat4.multiply(pv, this.projectionMatrix, this.viewMatrix);
+            return pv;
+        }
+
+        get x() {
+            return -this.viewMatrix[12];
+        }
+
+        get y() {
+            return -this.viewMatrix[13];
+        }
+
+        get z() {
+            return -this.viewMatrix[14];
+        }
+    }
+
+    // Ball type
+    // Star uses the star shader
+    // Planet uses the planet shader
+    const BallType = {
+        Star: 0,
+        Planet: 1,
+    };
+
+    // Ball class
+    // Represents a renderable ball object
+    class Ball {
+        constructor(x, y, radius, type) {
+            this.x = x;
+            this.y = y;
+            this.radius = radius;
+            this.type = type;
+            let r = Math.random() * 0.3 + 0.25;
+            let g = Math.random() * 0.3 + 0.25;
+            let b = Math.random() * 0.3 + 0.25;
+            this.color = [r, g, b, 1.0];
+        }
+    }
+
+    // Renderer class
+    class Renderer {
+        constructor(context) {
+            this.ctx = context;
+            this.planets = [];
+            this.stars = [];
+            this.vaos = [];
+            this.camera = new Camera(context);
+            this.time = 0.0;
+
+            this.planetShader = initShaderProgram(this.ctx, vsPlanetSource, fsPlanetSource);
+            this.starShader = initShaderProgram(this.ctx, vsStarSource, fsStarSource);
+
+            this.ctx.enable(this.ctx.DEPTH_TEST);
+
+            this.addVaoFromMesh(new Icosphere(3).attributes)
+            this.addVaoFromMesh(new Icosphere(2).attributes);
+            this.addVaoFromMesh(new Icosphere(1).attributes);
+            this.addVaoFromMesh(new Icosphere(0).attributes);
+        }
+
+        addVaoFromMesh(mesh) {
+            const vaoBuffer = this.ctx.createBuffer();
+            this.ctx.bindBuffer(this.ctx.ARRAY_BUFFER, vaoBuffer);
+            this.ctx.bufferData(this.ctx.ARRAY_BUFFER, new Float32Array(mesh), this.ctx.STATIC_DRAW);
+
+            const vao = this.ctx.createVertexArray();
+            this.ctx.bindVertexArray(vao);
+            this.ctx.vertexAttribPointer(0, 3, this.ctx.FLOAT, false, 4 * 6, 0);
+            this.ctx.enableVertexAttribArray(0);
+            this.ctx.vertexAttribPointer(1, 3, this.ctx.FLOAT, false, 4 * 6, 4 * 3);
+            this.ctx.enableVertexAttribArray(1);
+            this.vaos.push({ 'data': vao, 'buffer': vaoBuffer, 'length': mesh.length / 6 });
+
+            this.ctx.bindVertexArray(null);
+            this.ctx.bindBuffer(this.ctx.ARRAY_BUFFER, null);
+        }
+
+        getCamera() {
+            return this.camera;
+        }
+
+        addBall(ball) {
+            if (ball.type === BallType.Star) {
+                this.stars.push(ball);
+            } else if (ball.type === BallType.Planet) {
+                this.planets.push(ball);
+            }
+        }
+
+        removeBall(ball) {
+            if (ball.type === BallType.Star) {
+                this.stars.splice(this.stars.indexOf(ball), 1);
+            } else if (ball.type === BallType.Planet) {
+                this.planets.splice(this.planets.indexOf(ball), 1);
+            }
+        }
+
+        render(delta) {
+            this.time += delta;
+            this.ctx.clearColor(0.0, 0.0, 0.0, 1.0);
+            this.ctx.clear(this.ctx.COLOR_BUFFER_BIT);
+
+            let projectionViewMatrix = this.camera.projectionViewMatrix;
+            let vaoIdx = Math.floor(this.camera.z / 400);
+            vaoIdx = Math.min(this.vaos.length - 1, vaoIdx);
+            let vao = this.vaos[vaoIdx];
+            this.ctx.bindVertexArray(vao.data);
+
+            this.ctx.useProgram(this.starShader);
+            let lights = [];
+
+            for (let ball of this.stars) {
+                const modelViewMatrix = mat4.create();
+                mat4.translate(modelViewMatrix, modelViewMatrix, [ball.x, ball.y, 0]);
+                mat4.scale(modelViewMatrix, modelViewMatrix, [ball.radius, ball.radius, ball.radius]);
+                this.ctx.uniformMatrix4fv(this.ctx.getUniformLocation(this.starShader, 'uProjectionMatrix'), false, projectionViewMatrix);
+                this.ctx.uniformMatrix4fv(this.ctx.getUniformLocation(this.starShader, 'uModelViewMatrix'), false, modelViewMatrix);
+                this.ctx.uniform1f(this.ctx.getUniformLocation(this.starShader, 'uTime'), this.time);
+                this.ctx.drawArrays(this.ctx.TRIANGLES, 0, vao.length);
+                if (lights.length < 4)
+                    lights.push([ball.x, ball.y, 0, 1.0]);
+            }
+            this.ctx.useProgram(this.planetShader);
+            for (let i = this.planets.length - 1; i >= 0; i--) {
+                // some planets became stars
+                let ball = this.planets[i];
+                if (ball.type === BallType.Star) {
+                    this.stars.push(ball);
+                    this.planets.splice(i, 1);
+                    continue;
+                }
+
+
+                const modelViewMatrix = mat4.create();
+                mat4.translate(modelViewMatrix, modelViewMatrix, [ball.x, ball.y, 0]);
+                mat4.scale(modelViewMatrix, modelViewMatrix, [ball.radius, ball.radius, ball.radius]);
+                this.ctx.uniformMatrix4fv(this.ctx.getUniformLocation(this.planetShader, 'uProjectionMatrix'), false, projectionViewMatrix);
+                this.ctx.uniformMatrix4fv(this.ctx.getUniformLocation(this.planetShader, 'uModelViewMatrix'), false, modelViewMatrix);
+                this.ctx.uniform4fv(this.ctx.getUniformLocation(this.planetShader, 'uColor'), ball.color);
+
+                let lightMatrix = mat4.create();
+                for (let i = 0; i < lights.length; i++) {
+                    lightMatrix[i * 4] = lights[i][0];
+                    lightMatrix[i * 4 + 1] = lights[i][1];
+                    lightMatrix[i * 4 + 2] = lights[i][2];
+                    lightMatrix[i * 4 + 3] = lights[i][3];
+                }
+                this.ctx.uniformMatrix4fv(this.ctx.getUniformLocation(this.planetShader, 'uLights'), false, lightMatrix);
+                this.ctx.uniform1i(this.ctx.getUniformLocation(this.planetShader, 'uNumLights'), lights.length);
+                this.ctx.drawArrays(this.ctx.TRIANGLES, 0, vao.length);
+            }
+            this.ctx.bindVertexArray(null);
+        }
+    }
+
+    // Integrator class
+    class Integrator {
+        constructor() {
+            this.delta_residue = 0;
+            this.G = 1.0;
+        }
+        integrate_step(planets, delta) {
+            // half step
+            for (let i = 0; i < planets.length; ++i) {
+                // Derivative of the kinetic energy
+                let dVp = Vector2dMul(planets[i].p, 1.0 / planets[i].m);
+
+                // Integrate the position
+                planets[i].q = Vector2dAdd(planets[i].q, Vector2dMul(dVp, delta / 2));
+            }
+
+            // Derivative of the potential energy
+            let dUq = Array(planets.length).fill(Vector2dZero);
+            for (let i = 0; i < dUq.length; ++i) {
+                for (let j = i + 1; j < dUq.length; ++j) {
+                    let dq = Vector2dSub(planets[j].q, planets[i].q);
+                    let qDot = Vector2dSelfDot(dq)
+                    let dl = (this.G * planets[i].m * planets[j].m) / (qDot * Math.sqrt(qDot));
+                    dUq[i] = Vector2dSub(dUq[i], Vector2dMul(dq, dl));
+                    dUq[j] = Vector2dAdd(dUq[j], Vector2dMul(dq, dl));
+                }
+
+                // Integrate the impulse
+                planets[i].p = Vector2dSub(planets[i].p, Vector2dMul(dUq[i], delta));
+            }
+
+            for (let i = 0; i < planets.length; ++i) {
+                // Derivative of the kinetic energy
+                let dVp = Vector2dMul(planets[i].p, 1.0 / planets[i].m);
+
+                // Integrate the position
+                planets[i].q = Vector2dAdd(planets[i].q, Vector2dMul(dVp, delta / 2));
+            }
+        }
+
+        integrate(planets, delta) {
+            this.delta_residue += delta;
+            while (this.delta_residue > 0.1) {
+                this.integrate_step(planets, 0.1);
+                this.delta_residue -= 0.1;
+            }
+        }
+    }
+
+    // Body class
+    // Represents a body in the simulation with position, velocity and mass
+    // The integration is done in the Integrator class and acts on the Body class objects
+
+    // Helper function
+    function volumeToRadius(v) {
+        return Math.cbrt((v * 3) / (4 * Math.PI));
+    }
+
+    class Body {
+        constructor(q, v, m) {
+            this.q_ = q;
+            this.p_ = Vector2dMul(v, m);
+            this.m_ = m;
+            this.release_ = false;
+
+            if (m >= 1e4) {
+                this.ball = new Ball(q.x, q.y, volumeToRadius(m), BallType.Star);
+            } else {
+                this.ball = new Ball(q.x, q.y, volumeToRadius(m), BallType.Planet);
+            }
+        }
+
+        set q(q) {
+            this.q_ = q;
+            this.ball.x = q.x;
+            this.ball.y = q.y;
+        }
+
+        get q() {
+            return this.q_;
+        }
+
+        set p(p) {
+            this.p_ = p;
+        }
+
+        get p() {
+            return this.p_;
+        }
+
+        set m(m) {
+            this.m_ = m;
+            this.ball.radius = volumeToRadius(m);
+            if (m >= 1e4) {
+                this.ball.type = BallType.Star;
+            }
+        }
+
+        get m() {
+            return this.m_;
+        }
+
+        set release(release) {
+            this.release_ = release;
+        }
+
+        get release() {
+            return this.release_;
+        }
+
+        set type(type) {
+            this.ball.type = type;
+        }
+
+        get type() {
+            return this.ball.type;
+        }
+    }
+
+    // CollisionDetector class
+    class CollisionDetector {
+        constructor() {
+            this.collisions = [];
+        }
+
+        resolveCollisions(a, b) {
+            let m = a.m + b.m;
+            let p = Vector2dAdd(a.p, b.p);
+            if (a.m > b.m) {
+                a.p = p;
+                a.m = m;
+                b.release = true;
+            } else {
+                b.p = p;
+                b.m = m;
+                a.release = true;
+            }
+        }
+
+        detectCollisions(planets) {
+            this.collisions = [];
+            for (let i = 0; i < planets.length; i++) {
+                for (let j = i + 1; j < planets.length; j++) {
+                    if (this.collide(planets[i], planets[j])) {
+                        this.resolveCollisions(planets[i], planets[j]);
+                    }
+                }
+            }
+        }
+
+        collide(a, b) {
+            if (a.release || b.release) {
+                return false;
+            }
+            let r = Vector2dSub(a.q, b.q);
+            let d = Vector2dLength(r);
+            return d < a.ball.radius + b.ball.radius;
+        }
+    }
+
+    // Simulation class
+    class Simulation {
+        constructor(renderer, windowsToCanvasPos) {
+            this.camera = renderer.getCamera();
+            this.renderer = renderer;
+            this.windowsToCanvasPos = windowsToCanvasPos;
+            this.integration = new Integrator();
+            this.collisionDetector = new CollisionDetector();
+            this.lastTimeStamp = 0;
+            this.bodies = [];
+            this.mass = 1.0;
+
+
+            this.leftMouseDown = null;
+            this.rightMouseDown = null;
+            this.lastMousePosWorld = null;
+
+            this.touchBegin = null;
+            this.lastTouch = null;
+            this.doubleTouchBeginWorld = null;
+        }
+
+        setMass(mass) {
+            this.mass = mass;
+        }
+
+        onMouseDown(e) {
+            if (e.button === 0) {
+                this.leftMouseDown = this.windowsToCanvasPos(e.clientX, e.clientY);
+            } else if (e.button === 2) {
+                this.rightMouseDown = this.windowsToCanvasPos(e.clientX, e.clientY);
+                this.lastMousePosWorld = this.camera.canvasToWorldPoint(e.clientX, e.clientY);
+            }
+        }
+
+        onMouseUp(e) {
+            if (e.button === 0) {
+                let canvasPos = this.windowsToCanvasPos(e.clientX, e.clientY);
+                let leftMouseUpWorld = this.camera.canvasToWorldPoint(canvasPos[0], canvasPos[1]);
+                let leftMouseDownWorld = this.camera.canvasToWorldPoint(this.leftMouseDown[0], this.leftMouseDown[1]);
+                let v = Vector2dSub(Vector2d(leftMouseUpWorld[0], leftMouseUpWorld[1]), Vector2d(leftMouseDownWorld[0], leftMouseDownWorld[1]));
+                let m = this.mass;
+                v = Vector2dMul(v, 0.2);
+                this.addBody(new Body(Vector2d(leftMouseDownWorld[0], leftMouseDownWorld[1]), v, m));
+                this.leftMouseDown = null;
+            } else if (e.button === 2) {
+                this.rightMouseDown = null;
+            }
+        }
+
+        onMouseMove(e) {
+            if (this.rightMouseDown) {
+                let canvasPos = this.windowsToCanvasPos(e.clientX, e.clientY);
+                let mousePosWorld = this.camera.canvasToWorldPoint(canvasPos[0], canvasPos[1]);
+                let delta = Vector2dSub(Vector2d(mousePosWorld[0], mousePosWorld[1]), Vector2d(this.lastMousePosWorld[0], this.lastMousePosWorld[1]));
+                this.camera.translate(delta.x, delta.y, 0);
+            }
+        }
+
+        onRightMouseDown(e) {
+            this.rightClicked = this.windowsToCanvasPos(e.clientX, e.clientY);
+        }
+
+        onRightMouseUp(e) {
+            let rightClicked = this.windowsToCanvasPos(e.clientX, e.clientY);
+            let v = Vector2dSub(Vector2d(rightClicked[0], rightClicked[1]), Vector2d(this.rightClicked[0], this.rightClicked[1]))
+            this.camera.translate(v.x, v.y, 0);
+        }
+
+        onScroll(e) {
+            let canvasPos = this.windowsToCanvasPos(e.clientX, e.clientY);
+            let pos = this.camera.canvasToWorldPoint(canvasPos[0], canvasPos[1]);
+            let cameraPos = Vector2d(this.camera.x, this.camera.y);
+            let direction = Vector2dNormalize(Vector2dSub(Vector2d(pos[0], pos[1]), cameraPos));
+            if (e.deltaY > 0) {
+                if (this.camera.z - 10 > 50)
+                    this.camera.translate(-direction.x * 1, -direction.y * 1, 10);
+            } else {
+                this.camera.translate(0, 0, -10);
+            }
+        }
+
+        onTouchStart(e) {
+            if (e.touches.length === 1) {
+                let canvasPos = this.windowsToCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
+                this.touchBegin = canvasPos;
+                this.lastTouch = touchBegin;
+            }
+            else if (e.touches.length === 2) {
+                let canvasPos =
+                    [this.windowsToCanvasPos(e.touches[0].clientX, e.touches[0].clientY),
+                    this.windowsToCanvasPos(e.touches[1].clientX, e.touches[1].clientY)];
+                this.touchBegin = null; // reset single touch
+                let first = this.camera.canvasToWorldPoint(canvasPos[0][0], canvasPos[0][1]);
+                let second = this.camera.canvasToWorldPoint(canvasPos[1][0], canvasPos[1][1]);
+                this.doubleTouchBeginWorld = [first, second]
+            }
+        }
+
+        onTouchEnd(e) {
+            if (this.touchBegin) {
+                let lastTouchWorld = this.camera.canvasToWorldPoint(this.lastTouch[0], this.lastTouch[1]);
+                let touchBeginWorld = this.camera.canvasToWorldPoint(this.touchBegin[0], this.touchBegin[1]);
+                let v = Vector2dSub(Vector2d(lastTouchWorld[0], lastTouchWorld[1]), Vector2d(touchBeginWorld[0], touchBeginWorld[1]));
+                let m = this.mass;
+                v = Vector2dMul(v, 0.2);
+                this.addBody(new Body(Vector2d(touchBeginWorld[0], touchBeginWorld[1]), v, m));
+                this.touchBegin = null;
+            }
+        }
+
+        onTouchMove(e) {
+            if (e.touches.length === 1) {
+                this.lastTouch = this.windowsToCanvasPos(e.touches[0].clientX, e.touches[0].clientY);
+            }
+            else if (e.touches.length === 2) {
+                let canvasPos =
+                    [this.windowsToCanvasPos(e.touches[0].clientX, e.touches[0].clientY),
+                    this.windowsToCanvasPos(e.touches[1].clientX, e.touches[1].clientY)];
+                let firstTouchWorld = this.camera.canvasToWorldPoint(canvasPos[0][0], canvasPos[0][1]);
+                let secondTouchWorld = this.camera.canvasToWorldPoint(canvasPos[1][0], canvasPos[1][1]);
+                let firstTouchBeginWorld = this.doubleTouchBeginWorld[0];
+                let secondTouchBeginWorld = this.doubleTouchBeginWorld[1];
+                let v = Vector2dSub(Vector2d(firstTouchWorld[0], firstTouchWorld[1]), Vector2d(firstTouchBeginWorld[0], firstTouchBeginWorld[1]));
+                let dist1 = Vector2dLength(Vector2dSub(Vector2d(secondTouchBeginWorld[0], secondTouchBeginWorld[1]), Vector2d(firstTouchBeginWorld[0], firstTouchBeginWorld[1])));
+                let dist2 = Vector2dLength(Vector2dSub(Vector2d(secondTouchWorld[0], secondTouchWorld[1]), Vector2d(firstTouchWorld[0], firstTouchWorld[1])));
+                let scale = dist2 / dist1;
+                let z = -(1.0 - scale) * 10;
+                if (this.camera.z - z < 50) {
+                    z = 0;
+                }
+                this.camera.translate(v.x, v.y, z);
+            }
+        }
+
+        addBody(body) {
+            this.bodies.push(body);
+            this.renderer.addBall(body.ball);
+        }
+
+        removeBody(body) {
+            this.bodies.splice(this.bodies.indexOf(body), 1);
+            this.renderer.removeBall(body.ball);
+        }
+
+        cleanupBodies() {
+            for (let body of this.bodies) {
+                if (body.release) {
+                    this.removeBody(body);
+                }
+            }
+        }
+
+        update(delta) {
+            this.integration.integrate(this.bodies, delta);
+            this.collisionDetector.detectCollisions(this.bodies);
+            this.cleanupBodies();
+        }
+
+        step(timeStamp) {
+            let delta = (timeStamp - this.lastTimeStamp) / 2;
+            this.lastTimeStamp = timeStamp;
+
+            this.update(delta / 50);
+
+            this.renderer.render(delta);
+            window.requestAnimationFrame(this.step.bind(this));
+        }
+
+        start() {
+            this.addBody(new Body(Vector2d(400.0, 300.0), Vector2dZero, 10000.0));
+            window.requestAnimationFrame(this.step.bind(this));
+        }
+    }
+
+    let windowsToCanvasPos = (x, y) => {
+        let rect = canvas.getBoundingClientRect();
+        return [x - rect.left, y - rect.top];
+    }
+
+    let canvas = document.getElementById("myCanvas");
+    canvas.width = window.innerWidth - 20;
+    canvas.height = window.innerHeight - 100;
+    let ctx = canvas.getContext("webgl2");
+    let renderer = new Renderer(ctx);
+    let simulation = new Simulation(renderer, windowsToCanvasPos);
+    canvas.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+    });
+    canvas.addEventListener("mousedown", (e) => {
+        simulation.onMouseDown(e);
+    });
+    canvas.addEventListener("mouseup", (e) => {
+        simulation.onMouseUp(e);
+    });
+    canvas.addEventListener("wheel", (e) => {
+        simulation.onScroll(e);
+        event.preventDefault();
+    });
+    canvas.addEventListener("mousemove", (e) => {
+        simulation.onMouseMove(e);
+    });
+    canvas.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        simulation.onTouchStart(e);
+    });
+    canvas.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        simulation.onTouchMove(e);
+    });
+    canvas.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        simulation.onTouchEnd(e);
+    });
+    let massSlider = document.getElementById("massSlider");
+    massSlider.oninput = function () {
+        let value = Math.floor(Math.pow(1.1, this.value));
+        document.getElementById("massValue").innerHTML = value;
+        simulation.setMass(parseInt(value));
+    }
+    simulation.start();
+</script>

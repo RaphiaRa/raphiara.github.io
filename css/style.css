@@ -11,7 +11,7 @@ body {
     color: #e2e0de;
     background-color: #363533;
     font-weight: 400;
-    font-size: 14px;
+    font-size: 1em;
     font-family: "JetBrains Mono", monospace;
     line-height: 1.725;
     text-rendering: geometricPrecision;

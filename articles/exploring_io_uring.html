@@ -38,7 +38,7 @@
         </script>
         
     <!-- page title -->
-    <title>Raphia's Blog</title>
+    <title>Raphia</title>
 </head>
 
 
@@ -55,6 +55,7 @@
         </li>
         -->
             <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
             <li><a href="/cv">CV</a></li>
             <!-- <li><a href="/posts">All posts</a></li> -->
         </ul>
@@ -180,7 +181,7 @@ For more information on atomic operations, see <a href="https://gcc.gnu.org/onli
 new entries on the ring for it to consume. Then, we gotta
 wait for new entries on the completion ring. Both
 can be done with a single system call:
-It's signature looks like this</p>
+Its signature looks like this</p>
 <pre tabindex="0" style="color:#f8f8f2;background-color:#272822;white-space:pre-wrap;word-break:break-word;"><code><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f">1</span><span><span style="color:#66d9ef">int</span> <span style="color:#a6e22e">io_uring_enter</span>(<span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> fd, <span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> to_submit,
 </span></span><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f">2</span><span>                   <span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> min_complete, <span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> flags,
 </span></span><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f">3</span><span>                   sigset_t <span style="color:#f92672">*</span>sig);
@@ -189,7 +190,7 @@ It's signature looks like this</p>
 </span></span></code></pre><p>Here, we are telling io_uring to submit one entry, and wait for one entry to be completed.
 If we didn't pass IORING_ENTER_GETEVENTS, then the system call wouldn't block until
 one operation completes.</p>
-<p>We still need to pull the completed operation from the ring and read it's result.</p>
+<p>We still need to pull the completed operation from the ring and read its result.</p>
 <pre tabindex="0" style="color:#f8f8f2;background-color:#272822;white-space:pre-wrap;word-break:break-word;"><code><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f"> 1</span><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">int</span> <span style="color:#a6e22e">pull</span>(<span style="color:#66d9ef">struct</span> cq_ring <span style="color:#f92672">*</span>cring)
 </span></span><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f"> 2</span><span>{
 </span></span><span style="display:flex;"><span style="white-space:pre;user-select:none;margin-right:0.4em;padding:0 0.4em 0 0.4em;color:#7f7f7f"> 3</span><span>    <span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> head, tail, index;
@@ -265,12 +266,13 @@ for example via the following snippet that I copied from the Linux Kernel.</p>
         <!-- Footer -->
         <footer id="footer" class="max-width mx-auto">
     <div class="footer-left">
-        Copyright © 2022 RaphiaRa
+        Copyright © 2023 Raphia
     </div>
     <div class="footer-right">
         <nav>
             <ul>
                 <li><a href="/">Home</a></li>
+                <li><a href="/about">About</a></li>
                 <li><a href="/cv">CV</a></li>
                 <!-- <li><a href="/posts">All posts</a></li> -->
             </ul>
