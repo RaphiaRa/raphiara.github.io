@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- be responsive -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!-- encode multiple languages -->
+    <meta charset="utf-8">
+    <!-- override Bootstrap style -->
+    <link rel="stylesheet" type="text/css" href="/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <!-- favicon -->
+    <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+    <!-- Katex stuff -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.3/dist/katex.min.css" integrity="sha384-Juol1FqnotbkyZUT5Z7gUPjQ9gzlwCENvUZTpQBAPxtusdwFLRy382PSDx5UUJ4/" crossorigin="anonymous">
+
+    <!-- The loading of KaTeX is deferred to speed up page rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.3/dist/katex.min.js" integrity="sha384-97gW6UIJxnlKemYavrqDHSX3SiygeOwIZhwyOKRfSaf0JWKRVj9hLASHgFTzT+0O" crossorigin="anonymous"></script>
+
+    <!-- To automatically render math in text elements, include the auto-render extension: -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.3/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"
+    ></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                renderMathInElement(document.body, {
+                  // customised options
+                  // • auto-render specific keys, e.g.:
+                  delimiters: [
+                      {left: '$$', right: '$$', display: true},
+                      {left: '$', right: '$', display: false},
+                      {left: '\\(', right: '\\)', display: false},
+                      {left: '\\[', right: '\\]', display: true}
+                  ],
+                  // • rendering keys, e.g.:
+                  throwOnError : false
+                });
+            });
+        </script>
+        
+    <!-- page title -->
+    <title>Raphia</title>
+</head>
+
+
+<body class="max-width px3 mx-auto">
+    <div class="content py4">
+        <!-- HEADER -->
+        <header id="header">
+    <h1>Raphia's Blog</h1>
+    <div id="navbar">
+        <ul>
+            <!-- Optional icon for later
+        <li class="icon">
+            <a href="#" aria-label="Menu"><i class="fas fa-bars fa-2x" aria-hidden="true"></i></a>
+        </li>
+        -->
+            <li><a href="/">Home</a></li>
+            <li><a href="/about">About</a></li>
+            <li><a href="/cv">CV</a></li>
+            <!-- <li><a href="/posts">All posts</a></li> -->
+        </ul>
+    </div>
+</header>
+
+        <p>Symplectic integration is a numerical method for solving ordinary differential equations (ODEs) that is widely used in physics and astronomy. It is particularly well-suited for problems where the Hamiltonian is known and conserved, such as in celestial mechanics.</p>
+<p>Recently I wrote a small planetary system simulator in Java Script
+that uses a symplectic integrator and it worked quite well:
+<a href="/snippets/planets.html">Planetary System Simulator</a>.</p>
+
+        <!-- Footer -->
+        <footer id="footer" class="max-width mx-auto">
+    <div class="footer-left">
+        Copyright © 2023 Raphia
+    </div>
+    <div class="footer-right">
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/about">About</a></li>
+                <li><a href="/cv">CV</a></li>
+                <!-- <li><a href="/posts">All posts</a></li> -->
+            </ul>
+        </nav>
+    </div>
+</footer>
+
+    </div>
+</body>
+
+</html>
