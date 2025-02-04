@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+
+{{.HtmlHead}}
+
+<body class="max-width px3 mx-auto">
+    <div class="content py4">
+        <!-- HEADER -->
+        {{.ContentHeader}}
+        <!-- About -->
+        <section id="about">
+            Just some guy trying to figure life out.
+            Inspired by <a style="display: inline;" href="https://www.brainbun.com">Brainbun</a> I'll try
+            creating and sharing something new every week on this site.
+            <p>Find me on
+                <a rel="noopener" href="https://github.com/RaphiaRa" aria-label="github">
+                    <i class="fa fa-github" style="font-size:16px; color:#e2e0de;"></i>
+                </a>
+            </p>
+        </section>
+        <!--
+        <p><a href="https://en.wikipedia.org/wiki/Shenzhen"><img src="assets/Shenzhen.jpeg" alt="Shenzhen" style="max-width: 100%; height: auto; border: 1px solid #e2e0de;"></a></p>
+        -->
+        <div class="contribution-grid">
+            {{ range .Weeks }}
+            <div class="contribution-box" data-count="{{ .Count }}"></div>
+            {{ end }}
+        </div>
+        <!-- Writings -->
+        <section id="writings">
+            <span class="writings-header"><a href="https://raphiara.github.io">Writings</a></span>
+            <ul class="article-list">
+                {{range .Articles}}
+                <li class="article-item">
+                    <div class="meta"><time datetime="{{.CreatedOn}}" itemprop="datePublished">{{.CreatedOn.Format "02 Jan 2006"}}</time></div>
+                    <span><a href="{{.Link}}">{{.Title}}</a></span>
+                </li>
+                {{end}}
+            </ul>
+        </section>
+        <!-- Footer -->
+        {{.Footer}}
+    </div>
+</body>
+
+</html>
